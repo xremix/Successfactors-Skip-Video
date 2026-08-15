@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         SuccessFactors Skip Video
 // @namespace    https://github.com/successfactors-skip-video
-// @version      1.0.0
-// @description  Setzt bei allen Video-/Audio-Elementen die Abspielgeschwindigkeit auf 10 und springt ans Ende (Dauer - 1s).
+// @version      1.1.0
+// @description  Setzt bei allen Video-/Audio-Elementen die Abspielgeschwindigkeit auf 10 und springt ans Ende (Dauer - 1s). Manuell per Button.
 // @author       -
 // @match        *://*.successfactors.com/*
 // @match        *://*.successfactors.eu/*
@@ -70,6 +70,67 @@
         root.querySelectorAll('video, audio').forEach(handle);
     }
 
+    const MESSAGE = 'sf-skip-video:run';
+
+    function runInFrames(win) {
+        for (let i = 0; i < win.frames.length; i++) {
+            try {
+                win.frames[i].postMessage(MESSAGE, '*');
+            } catch (err) {
+                // Cross-Origin-Frames ignorieren.
+            }
+        }
+    }
+
+    function runSkip() {
+        scan(document);
+        runInFrames(window);
+    }
+
+    window.addEventListener('message', (event) => {
+        if (event.data === MESSAGE) {
+            runSkip();
+        }
+    });
+
+    function addButton() {
+        if (window.top !== window.self || document.getElementById('sf-skip-video-btn')) {
+            return;
+        }
+
+        const button = document.createElement('button');
+        button.id = 'sf-skip-video-btn';
+        button.type = 'button';
+        button.textContent = 'Skip Video';
+        button.style.cssText = [
+            'position:fixed',
+            'bottom:20px',
+            'right:20px',
+            'z-index:2147483647',
+            'padding:10px 16px',
+            'font:600 13px/1.2 system-ui, sans-serif',
+            'color:#fff',
+            'background:#0a6ed1',
+            'border:none',
+            'border-radius:6px',
+            'box-shadow:0 2px 8px rgba(0,0,0,.3)',
+            'cursor:pointer'
+        ].join(';');
+
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
+            runSkip();
+        });
+
+        document.body.appendChild(button);
+    }
+
+    if (document.body) {
+        addButton();
+    } else {
+        document.addEventListener('DOMContentLoaded', addButton, { once: true });
+    }
+
     scan(document);
 
     const observer = new MutationObserver((mutations) => {
@@ -91,5 +152,8 @@
     observer.observe(document.documentElement, { childList: true, subtree: true });
 
     // Fallback für Player, die Elemente ersetzen oder currentTime zurücksetzen.
-    setInterval(() => scan(document), 2000);
+    setInterval(() => {
+        scan(document);
+        addButton();
+    }, 2000);
 })();
