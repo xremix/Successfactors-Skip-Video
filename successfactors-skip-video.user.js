@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         SuccessFactors Skip Video
 // @namespace    https://github.com/successfactors-skip-video
-// @version      1.1.0
-// @description  Setzt bei allen Video-/Audio-Elementen die Abspielgeschwindigkeit auf 10 und springt ans Ende (Dauer - 1s). Manuell per Button.
+// @version      1.2.0
+// @description  Setzt bei allen Video-/Audio-Elementen die Abspielgeschwindigkeit auf 10 und springt ans Ende (Dauer - 1s). Manuell per Button oder Taste "S".
 // @author       -
 // @match        *://*.successfactors.com/*
 // @match        *://*.successfactors.eu/*
@@ -93,6 +93,31 @@
         }
     });
 
+    function isTypingTarget(target) {
+        if (!target) {
+            return false;
+        }
+        if (target.isContentEditable) {
+            return true;
+        }
+        const tag = target.tagName;
+        return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 's' && event.key !== 'S') {
+            return;
+        }
+        if (event.ctrlKey || event.metaKey || event.altKey) {
+            return;
+        }
+        if (isTypingTarget(event.target)) {
+            return;
+        }
+        event.preventDefault();
+        runSkip();
+    }, true);
+
     function addButton() {
         if (window.top !== window.self || document.getElementById('sf-skip-video-btn')) {
             return;
@@ -101,7 +126,7 @@
         const button = document.createElement('button');
         button.id = 'sf-skip-video-btn';
         button.type = 'button';
-        button.textContent = 'Skip Video';
+        button.textContent = 'Skip Video (S)';
         button.style.cssText = [
             'position:fixed',
             'bottom:20px',
