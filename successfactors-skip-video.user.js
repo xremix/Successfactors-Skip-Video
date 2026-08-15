@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         SuccessFactors Skip Video
 // @namespace    https://github.com/successfactors-skip-video
-// @version      0.1.0
-// @description  Findet alle Video-/Audio-Elemente auf SuccessFactors-Seiten, auch dynamisch nachgeladene.
+// @version      1.0.0
+// @description  Setzt bei allen Video-/Audio-Elementen die Abspielgeschwindigkeit auf 10 und springt ans Ende (Dauer - 1s).
 // @author       -
 // @match        *://*.successfactors.com/*
 // @match        *://*.successfactors.eu/*
@@ -16,12 +16,47 @@
 (function () {
     'use strict';
 
+    const PLAYBACK_RATE = 10;
+    const END_OFFSET = 1;
+
+    function skip(media) {
+        try {
+            if (media.playbackRate !== PLAYBACK_RATE) {
+                media.playbackRate = PLAYBACK_RATE;
+            }
+
+            const duration = media.duration;
+            if (!Number.isFinite(duration) || duration <= 0) {
+                return;
+            }
+
+            const target = Math.max(0, duration - END_OFFSET);
+            if (media.currentTime < target) {
+                media.currentTime = target;
+            }
+        } catch (err) {
+            console.warn('[SF Skip Video] Aktion fehlgeschlagen:', err);
+        }
+    }
+
     function handle(media) {
         if (media.dataset.sfSkipHooked === '1') {
+            skip(media);
             return;
         }
         media.dataset.sfSkipHooked = '1';
-        console.debug('[SF Skip Video] Medienelement gefunden:', media);
+
+        // Metadaten werden oft erst nach dem Einfügen ins DOM geladen.
+        media.addEventListener('loadedmetadata', () => skip(media));
+        media.addEventListener('durationchange', () => skip(media));
+        media.addEventListener('play', () => skip(media));
+        media.addEventListener('ratechange', () => {
+            if (media.playbackRate !== PLAYBACK_RATE) {
+                media.playbackRate = PLAYBACK_RATE;
+            }
+        });
+
+        skip(media);
     }
 
     function scan(root) {
