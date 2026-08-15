@@ -21,8 +21,12 @@
 
     function skip(media) {
         try {
-            if (media.playbackRate !== PLAYBACK_RATE) {
-                media.playbackRate = PLAYBACK_RATE;
+            try {
+                if (media.playbackRate !== PLAYBACK_RATE) {
+                    media.playbackRate = PLAYBACK_RATE;
+                }
+            } catch (err) {
+                console.warn('[SF Skip Video] Abspielgeschwindigkeit konnte nicht gesetzt werden:', err);
             }
 
             const duration = media.duration;
