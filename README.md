@@ -44,7 +44,7 @@ If your tenant uses a different domain, add a matching `@match` line to the scri
 ## Notes
 
 - Some players ignore or override `playbackRate` and `currentTime`; in that case press <kbd>S</kbd> again.
-- Cross-origin iframes cannot be reached from the parent page — the script runs inside them on its own because of `@all-frames`.
+- Cross-origin iframes cannot be reached from the parent page. With `@all-frames`, the script runs inside a frame only when that frame's own URL matches one of the `@match` patterns above.
 - Skipping mandatory trainings may violate your employer's policies. Use at your own risk.
 
 ## License
