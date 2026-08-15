@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         SuccessFactors Skip Video
 // @namespace    https://github.com/successfactors-skip-video
-// @version      1.2.0
-// @description  Setzt bei allen Video-/Audio-Elementen die Abspielgeschwindigkeit auf 10 und springt ans Ende (Dauer - 1s). Manuell per Button oder Taste "S".
+// @version      1.3.0
+// @description  Setzt bei Video/Audio sowie SVG-/Canvas-basierten Animationen die Wiedergabe auf schnell und springt nahe ans Ende. Manuell per Button oder Taste "S".
 // @author       -
 // @match        *://*.successfactors.com/*
 // @match        *://*.successfactors.eu/*
@@ -18,6 +18,7 @@
 
     const PLAYBACK_RATE = 10;
     const END_OFFSET = 1;
+    const END_OFFSET_MS = END_OFFSET * 1000;
 
     function skip(media) {
         try {
@@ -70,6 +71,145 @@
         root.querySelectorAll('video, audio').forEach(handle);
     }
 
+    function parseTimeMs(value) {
+        if (typeof value !== 'string') {
+            return null;
+        }
+        const trimmed = value.trim();
+        if (!trimmed) {
+            return null;
+        }
+        const num = Number.parseFloat(trimmed);
+        if (!Number.isFinite(num)) {
+            return null;
+        }
+        if (trimmed.endsWith('ms')) {
+            return num;
+        }
+        if (trimmed.endsWith('s')) {
+            return num * 1000;
+        }
+        return num * 1000;
+    }
+
+    function skipWebAnimation(animation) {
+        try {
+            if (animation.playbackRate !== PLAYBACK_RATE) {
+                animation.playbackRate = PLAYBACK_RATE;
+            }
+
+            if (!animation.effect || typeof animation.effect.getComputedTiming !== 'function') {
+                return;
+            }
+
+            const timing = animation.effect.getComputedTiming();
+            const endTime = timing ? timing.endTime : null;
+            if (!Number.isFinite(endTime) || endTime <= 0) {
+                return;
+            }
+
+            const target = Math.max(0, endTime - END_OFFSET_MS);
+            if (typeof animation.currentTime === 'number') {
+                if (animation.currentTime < target) {
+                    animation.currentTime = target;
+                }
+            } else {
+                animation.currentTime = target;
+            }
+        } catch (err) {
+            console.warn('[SF Skip Video] Web-Animation konnte nicht geskippt werden:', err);
+        }
+    }
+
+    function skipWebAnimations(scope) {
+        try {
+            const target = scope && typeof scope.getAnimations === 'function' ? scope : document;
+            target.getAnimations({ subtree: true }).forEach(skipWebAnimation);
+        } catch (err) {
+            console.warn('[SF Skip Video] Auslesen von Web-Animationen fehlgeschlagen:', err);
+        }
+    }
+
+    function skipSvgSmil(root) {
+        if (!root || typeof root.querySelectorAll !== 'function') {
+            return;
+        }
+
+        const animations = root.querySelectorAll('svg animate, svg animateTransform, svg animateMotion, svg set');
+        let maxDurationMs = 0;
+
+        animations.forEach((anim) => {
+            try {
+                if (typeof anim.getSimpleDuration === 'function') {
+                    const durationSec = anim.getSimpleDuration();
+                    if (Number.isFinite(durationSec) && durationSec > 0) {
+                        maxDurationMs = Math.max(maxDurationMs, durationSec * 1000);
+                        return;
+                    }
+                }
+            } catch (err) {
+                // Ignore unsupported getSimpleDuration implementations.
+            }
+
+            const durAttr = anim.getAttribute('dur');
+            const durMs = parseTimeMs(durAttr);
+            if (Number.isFinite(durMs) && durMs > 0) {
+                maxDurationMs = Math.max(maxDurationMs, durMs);
+            }
+        });
+
+        if (maxDurationMs <= 0) {
+            return;
+        }
+
+        const targetSec = Math.max(0, (maxDurationMs - END_OFFSET_MS) / 1000);
+        root.querySelectorAll('svg').forEach((svg) => {
+            try {
+                if (typeof svg.setCurrentTime === 'function') {
+                    svg.setCurrentTime(targetSec);
+                }
+            } catch (err) {
+                console.warn('[SF Skip Video] SVG-Sprung fehlgeschlagen:', err);
+            }
+        });
+    }
+
+    function skipLottie() {
+        try {
+            const lottie = window.lottie || window.bodymovin;
+            if (!lottie || typeof lottie.getRegisteredAnimations !== 'function') {
+                return;
+            }
+
+            const registered = lottie.getRegisteredAnimations();
+            if (!Array.isArray(registered)) {
+                return;
+            }
+
+            registered.forEach((anim) => {
+                try {
+                    if (typeof anim.setSpeed === 'function') {
+                        anim.setSpeed(PLAYBACK_RATE);
+                    }
+                    const totalFrames = anim.totalFrames;
+                    if (Number.isFinite(totalFrames) && totalFrames > 1 && typeof anim.goToAndStop === 'function') {
+                        anim.goToAndStop(totalFrames - 1, true);
+                    }
+                } catch (err) {
+                    console.warn('[SF Skip Video] Lottie-Sprung fehlgeschlagen:', err);
+                }
+            });
+        } catch (err) {
+            console.warn('[SF Skip Video] Lottie-Erkennung fehlgeschlagen:', err);
+        }
+    }
+
+    function skipSvgAndCanvas(root) {
+        skipWebAnimations(document);
+        skipSvgSmil(root || document);
+        skipLottie();
+    }
+
     const MESSAGE = 'sf-skip-video:run';
 
     function runInFrames(win) {
@@ -84,6 +224,7 @@
 
     function runSkip() {
         scan(document);
+        skipSvgAndCanvas(document);
         runInFrames(window);
     }
 
@@ -157,6 +298,7 @@
     }
 
     scan(document);
+    skipSvgAndCanvas(document);
 
     const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
@@ -169,6 +311,7 @@
                     handle(node);
                 } else {
                     scan(node);
+                    skipSvgAndCanvas(node);
                 }
             }
         }
@@ -179,6 +322,7 @@
     // Fallback für Player, die Elemente ersetzen oder currentTime zurücksetzen.
     setInterval(() => {
         scan(document);
+        skipSvgAndCanvas(document);
         addButton();
     }, 2000);
 })();
